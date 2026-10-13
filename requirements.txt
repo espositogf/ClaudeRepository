@@ -1,0 +1,6 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pandas>=2.1
+numpy>=1.26
+yfinance>=0.2.40
+pandas_market_calendars>=4.4
