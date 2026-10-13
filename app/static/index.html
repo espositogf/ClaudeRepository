@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Previsioni Gann</title>
+  <link rel="stylesheet" href="/static/tailwind.css">
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen overflow-x-hidden">
+  <main class="max-w-6xl mx-auto px-4 py-8">
+    <header class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900">Previsioni Gann · Borsa Italiana</h1>
+        <p id="meta" class="text-sm text-slate-500 mt-1">Caricamento in corso…</p>
+      </div>
+      <button id="refresh"
+        class="self-start sm:self-auto rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50">
+        Aggiorna
+      </button>
+    </header>
+
+    <div id="demo" class="hidden mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      Modalità dimostrativa: i prezzi sono generati artificialmente e non corrispondono al mercato reale.
+    </div>
+    <div id="error" class="hidden mb-6 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900"></div>
+
+    <section id="cards" class="grid gap-6 md:grid-cols-2"></section>
+
+    <p id="empty" class="hidden text-center text-slate-500 py-12">
+      Nessun titolo presenta oggi condizioni di Gann verificate.
+    </p>
+
+    <footer class="mt-10 text-xs text-slate-500 leading-relaxed">
+      La confidenza è la somma dei pesi delle condizioni di Gann concordi:
+      Angoli 1x1 (30%), Squadratura Prezzo/Tempo (25%), Quadrato di Nove (25%), Cicli Temporali (20%).
+      Le indicazioni sono generate automaticamente a scopo di studio e non costituiscono consulenza finanziaria.
+    </footer>
+  </main>
+
+  <template id="card-template">
+    <article class="min-w-0 rounded-xl bg-white shadow-sm ring-1 ring-slate-200 p-5 sm:p-6 flex flex-col gap-5">
+      <div class="flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <h2 data-field="nome" class="text-lg font-semibold text-slate-900 truncate"></h2>
+          <p data-field="ticker" class="text-sm text-slate-500"></p>
+        </div>
+        <span data-field="azione" class="shrink-0 rounded-full px-3 py-1 text-sm font-bold tracking-wide"></span>
+      </div>
+
+      <div>
+        <div class="flex items-baseline justify-between">
+          <span class="text-sm text-slate-500">Confidenza</span>
+          <span data-field="confidenza" class="text-3xl font-bold text-slate-900"></span>
+        </div>
+        <div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
+          <div data-field="barra" class="h-full rounded-full"></div>
+        </div>
+      </div>
+
+      <dl class="grid grid-cols-3 gap-3 text-sm">
+        <div><dt class="text-slate-500">Prezzo</dt><dd data-field="prezzo" class="font-medium"></dd></div>
+        <div><dt class="text-slate-500">Scala 1x1</dt><dd data-field="scala" class="font-medium"></dd></div>
+        <div><dt class="text-slate-500">Settimanale</dt><dd data-field="trend" class="font-medium"></dd></div>
+      </dl>
+
+      <ul data-field="condizioni" class="flex flex-col gap-2 text-sm"></ul>
+    </article>
+  </template>
+
+  <script>
+    const numberFmt = new Intl.NumberFormat("it-IT", { maximumFractionDigits: 3 });
+    const dateFmt = new Intl.DateTimeFormat("it-IT", { dateStyle: "long" });
+
+    const els = {
+      cards: document.getElementById("cards"),
+      meta: document.getElementById("meta"),
+      demo: document.getElementById("demo"),
+      error: document.getElementById("error"),
+      empty: document.getElementById("empty"),
+      refresh: document.getElementById("refresh"),
+      template: document.getElementById("card-template"),
+    };
+
+    function field(root, name) {
+      return root.querySelector(`[data-field="${name}"]`);
+    }
+
+    function conditionItem(cond) {
+      const li = document.createElement("li");
+      li.className = "flex gap-3 rounded-lg px-3 py-2 " +
+        (cond.concorde ? "bg-emerald-50" : cond.verificata ? "bg-amber-50" : "bg-slate-50");
+
+      const icon = document.createElement("span");
+      icon.className = "font-bold " +
+        (cond.concorde ? "text-emerald-600" : cond.verificata ? "text-amber-600" : "text-slate-400");
+      icon.textContent = cond.concorde ? "✓" : cond.verificata ? "!" : "–";
+
+      const body = document.createElement("div");
+      body.className = "min-w-0 break-words";
+      const title = document.createElement("div");
+      title.className = "font-medium text-slate-800";
+      title.textContent = `${cond.nome} · ${cond.peso}%`;
+      body.appendChild(title);
+
+      const note = document.createElement("div");
+      note.className = "text-xs text-slate-500 mt-0.5";
+      if (cond.concorde) {
+        note.textContent = cond.dettaglio;
+      } else if (cond.verificata) {
+        note.textContent = `In contrasto (indica ${cond.direzione}): ${cond.dettaglio}`;
+      } else {
+        note.textContent = "Condizione non verificata";
+      }
+      body.appendChild(note);
+
+      li.append(icon, body);
+      return li;
+    }
+
+    function renderCard(t) {
+      const node = els.template.content.cloneNode(true);
+      const buy = t.azione === "COMPRARE";
+      field(node, "nome").textContent = t.nome;
+      field(node, "ticker").textContent = t.ticker;
+
+      const badge = field(node, "azione");
+      badge.textContent = t.azione;
+      badge.classList.add(...(buy ? ["bg-emerald-100", "text-emerald-800"] : ["bg-red-100", "text-red-800"]));
+
+      field(node, "confidenza").textContent = `${t.confidenza}%`;
+      const bar = field(node, "barra");
+      bar.style.width = `${t.confidenza}%`;
+      bar.classList.add(buy ? "bg-emerald-500" : "bg-red-500");
+
+      field(node, "prezzo").textContent = `${numberFmt.format(t.prezzo)} €`;
+      field(node, "scala").textContent = `${numberFmt.format(t.fattore_scala)} €/g`;
+      const trend = field(node, "trend");
+      trend.textContent = t.trend_settimanale.toLowerCase();
+      if (t.conferma_settimanale) trend.textContent += " ✓";
+
+      const list = field(node, "condizioni");
+      t.condizioni.forEach((c) => list.appendChild(conditionItem(c)));
+      return node;
+    }
+
+    async function load(force = false) {
+      els.refresh.disabled = true;
+      els.error.classList.add("hidden");
+      els.meta.textContent = "Analisi dei titoli in corso…";
+      try {
+        const res = await fetch(`/api/previsioni${force ? "?aggiorna=true" : ""}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `Errore ${res.status}`);
+
+        els.cards.replaceChildren(...data.titoli.map(renderCard));
+        els.empty.classList.toggle("hidden", data.titoli.length > 0);
+        els.demo.classList.toggle("hidden", data.fonte_dati !== "demo");
+        const ref = data.data_riferimento ? dateFmt.format(new Date(data.data_riferimento)) : "n.d.";
+        els.meta.textContent = `Dati al ${ref} · ${data.titoli_analizzati} titoli analizzati`;
+      } catch (err) {
+        els.cards.replaceChildren();
+        els.error.textContent = `Impossibile ottenere le previsioni: ${err.message}`;
+        els.error.classList.remove("hidden");
+        els.meta.textContent = "";
+      } finally {
+        els.refresh.disabled = false;
+      }
+    }
+
+    els.refresh.addEventListener("click", () => load(true));
+    load();
+  </script>
+</body>
+</html>
